@@ -104,6 +104,19 @@ public:
         // The only time we may create duplicate edges is when
         // combining the MST with the perfect-matched pairs,
         // and in that case, we want to permit duplicate edges.
+        //
+        // NOTE: m_edgeIdNext is per-graph (not a global), which is required for thread safety.
+        // V3VariableOrder::orderAll() dispatches one tspSort() call per module into the Verilator
+        // thread pool (V3ThreadScope::enqueue), so multiple tspSort() invocations can run
+        // concurrently when --verilate-jobs / -j > 1.  tspSort() itself is annotated VL_MT_SAFE.
+        // A former global s_edgeIdNext was a data race under those conditions.  The per-graph
+        // counter means each graph owns its own counter; no cross-thread sharing, no race.
+        //
+        // combineGraph() uses edgeId to deduplicate the bidirectional edge pairs of the matching
+        // graph before adding them to minGraph.  If two distinct logical edges in the same
+        // matching graph shared an edgeId (possible with a racy global counter due to C++ UB),
+        // one would be silently dropped, leaving some vertices with odd degree, and the Euler
+        // tour would crash at "No unmarked edges found in tour".
         const uint32_t edgeId = ++m_edgeIdNext;
 
         // We want to be able to compare edges quickly for a total
